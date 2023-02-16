@@ -26,11 +26,10 @@ This repository includes the scripts used to munge, analyze, and visualize the d
 
 ### Figure 1. 
 <img src = "figures/edl_design.png" width = "70%">
-![Figure 1](figures/edl_design.png)
 Experimental Design. There were two types of experimental condition. In "gap" conditions, there was a temporal gap between Swahili presentation and English word presentation. In "no gap" conditions, the Swahili and English words were presented simultaneously.
 
 ### Figure 2. 
-![Figure 2](figures/exp1.png)
+<img src = "figures/exp1.png" width = "70%">
 Experiment 1 Cued-recall Performance. Mean proportion correct on the final cued-recall test in Experiment 1. Error bars represent standard error of the mean.
 
 ### Figure 3. 
