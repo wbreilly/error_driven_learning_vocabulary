@@ -25,7 +25,9 @@ This repository includes the scripts used to munge, analyze, and visualize the d
 `tfidf_check.py` tf-idf natural language processing technique used to identify spurious corrleations in incorrect final test performance to help identify individuals who used multiple accounts, i.e. bad data. 
 
 ### Figure 1. 
-<img src = "figures/edl_design.png" width = "70%">
+<p align="center"
+	<img src = "figures/edl_design.png" width = "70%">
+</p>
 Experimental Design. There were two types of experimental condition. In "gap" conditions, there was a temporal gap between Swahili presentation and English word presentation. In "no gap" conditions, the Swahili and English words were presented simultaneously.
 
 ### Figure 2. 
