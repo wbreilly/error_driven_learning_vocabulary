@@ -1,0 +1,406 @@
+---
+title: "EDL final stats"
+output: html_notebook
+---
+
+```{r}
+knitr::opts_chunk$set(message=TRUE,error = TRUE,echo=TRUE,results = "markdown",warning=TRUE)
+```
+
+```{r Libraries,results='hide'}
+library(tidyverse)
+library(afex)
+library(gt)
+library(parallel)
+library(gtsummary)
+```
+
+```{r helper_functions} 
+# collapse multiple retrieval presTimes down to one variable for main effect stats
+time_to_cond = function(df){
+  df$study_test = ifelse(df$presTime == 0, "NoGap","Gap")
+  df$NoGap_Gap = as.factor(df$study_test)
+  df
+}
+
+summarize_models = function(m1,m2){
+  models = list(m1 = summary(m1,correlations=FALSE),
+                m2 = summary(m2))
+return(models)
+}
+
+change_pres10 =function(df){
+  df$presTime = sub(10,0,df$presTime)
+return(df)
+}
+```
+
+```{r learning_function} 
+run_learning_models_and_tables = function(ldf,sdir,exp_flag){
+    
+  ldf = change_pres10(ldf)
+  ldf = time_to_cond(ldf)
+  ldf$SOA = as.factor(ldf$presTime)
+  ldf$id = as.factor(ldf$sona_id)
+  ldf$correct = as.numeric(ldf$correct)
+  ldf$first_press = as.numeric(ldf$first_press)
+  ldf$gap_group = as.factor(ldf$gap_group)
+  
+  # learning target accuracy
+  if(exp_flag == 3){
+    lm1 = aov_ez("id","correct",ldf,between="gap_group",within=c("gap_nogap","rep_idx"))
+  }else{
+    lm1 = aov_ez("id","correct",ldf,within=c("SOA","rep_idx"))  
+  } 
+  
+  # first_press average 
+  if(exp_flag == 3){
+    lm2 = aov_ez("id","first_press",ldf,between="gap_group",within=c("gap_nogap","rep_idx"))
+  }else{
+    lm2 = aov_ez("id","first_press",ldf,within=c("SOA","rep_idx"))  
+  } 
+  
+  # table accuracy by SOA
+  t_learn_accuracy_x_SOA = ldf %>% group_by(id,SOA) %>% summarize(sub_mean_correct = mean(correct),.groups="drop") %>% group_by(SOA) %>% summarize(mean = mean(sub_mean_correct),sd = sd(sub_mean_correct)) %>% gt() %>% fmt_number(
+     columns = c(mean,sd),
+    decimals = 2
+  )
+  t_learn_accuracy_x_SOA %>% gtsave(filename = "t_learn_accuracy_x_SOA.png",path=sdir)
+  
+  # accuracy grouped by rep_idx...
+  t_learn_accuracy_x_rep = ldf %>% group_by(sona_id,rep_idx) %>% summarize(sub_mean_correct = mean(correct),.groups="drop") %>% group_by(rep_idx) %>% summarize(mean = mean(sub_mean_correct),sd = sd(sub_mean_correct)) %>% gt() %>% fmt_number(
+     columns = c(mean,sd),
+    decimals = 2
+  ) %>%
+    fmt_number(columns = rep_idx, decimals = 0)
+  t_learn_accuracy_x_rep %>% gtsave(filename = "t_learn_accuracy_x_rep.png",path=sdir)
+
+  # table first_press by presTime
+  t_learn_RTxSOA = ldf %>% drop_na() %>%  group_by(id,SOA) %>% summarize(sub_mean_correct = mean(first_press,na.RM=TRUE),.groups="drop") %>% group_by(SOA) %>% summarize(mean = mean(sub_mean_correct,na.RM=TRUE),sd = sd(sub_mean_correct)) %>% gt() %>% fmt_number(
+     columns = c(mean,sd),
+    decimals = 0
+  )
+  t_learn_RTxSOA %>% gtsave(filename = "t_learn_RTxSOA.png",path=sdir)
+  
+  # table first_press by rep_idx
+  t_learn_RTxrep = ldf %>% drop_na() %>%  group_by(id,rep_idx) %>% summarize(sub_mean_correct = mean(first_press),.groups="drop") %>% group_by(rep_idx) %>% summarize(mean = mean(sub_mean_correct),sd = sd(sub_mean_correct)) %>% gt() %>% fmt_number(
+     columns = c(mean,sd),
+    decimals = 0
+  ) %>% 
+    fmt_number(columns = rep_idx, decimals = 0)
+  t_learn_RTxrep %>% gtsave(filename = "t_learn_RTxrep.png",path=sdir)
+  
+  out = list(lm1,lm2)
+  return(out)
+} # end function
+```
+
+```{r summarize_learning_models}
+summarize_learning_models = function(lm1,lm2){
+    models = list(lm1 = lm1,
+                  lm2 = lm2)
+return(models)
+}
+```
+
+```{r simplified_recall_models}
+# simplified models. Main effect, categorical of test and ttest
+run_simple_models = function(df,nsim){
+  
+df = change_pres10(df)
+df = time_to_cond(df)
+
+df$presTime_numeric = as.numeric(df$presTime)
+df$SOA = as.factor(df$presTime)
+df$id = as.factor(df$sona_id)
+df$correct = as.numeric(df$correct)
+df$pair_idx = as.factor(df$pair_idx)
+df$fp_diff = as.numeric(df$fp_diff)
+df$fp_diff_scale = scale(df$fp_diff)
+
+# just test df
+test_df = df %>% filter(presTime != "0")
+
+cl <- makeCluster(rep("localhost", 6)) # make cluster
+mm1 = afex::mixed(cl=cl,data=df,formula=(correct ~ NoGap_Gap + (NoGap_Gap|id) + (1|pair_idx)),family=binomial(link='logit'),method="PB",args_test = list(nsim = nsim, cl = cl),progress=TRUE,expand_re = TRUE,control = glmerControl(optCtrl = list(maxfun = 1e6)))
+stopCluster(cl)
+
+cl <- makeCluster(rep("localhost", 6)) # make cluster
+mm2 = afex::mixed(cl=cl,data=df,formula=(correct~ SOA + (1|id) + (1|pair_idx)),family=binomial(link='logit'),method="PB",args_test = list(nsim = nsim, cl = cl),progress=TRUE,expand_re = TRUE,control = glmerControl(optCtrl = list(maxfun = 1e6)),check_contrasts = FALSE,per_parameter="SOA")
+stopCluster(cl)
+
+out=list(mm1,mm2) 
+return(out)
+}
+```
+
+```{r tables_func}
+run_tables = function(df,sdir){
+### descriptive stats tables
+  
+df = change_pres10(df)
+df = time_to_cond(df)
+
+df$presTime_numeric = as.numeric(df$presTime)
+df$SOA = as.factor(df$presTime)
+df$id = as.factor(df$sona_id)
+df$correct = as.numeric(df$correct)
+df$pair_idx = as.factor(df$pair_idx)
+df$fp_diff = as.numeric(df$fp_diff)
+df$fp_diff_scale = scale(df$fp_diff)
+
+# study_test 
+t_study_test = df %>% group_by(id,NoGap_Gap) %>% summarize(sub_mean_correct = mean(correct),.groups="drop") %>% group_by(NoGap_Gap) %>% summarize(mean = mean(sub_mean_correct),sd = sd(sub_mean_correct)) %>% gt() %>% fmt_number(
+   columns = c(mean,sd),
+  decimals = 2
+)
+t_study_test %>% gtsave(filename = "NoGap_Gap_table.png",path=sdir)
+
+# SOA
+t_SOA = df %>% group_by(id,SOA) %>% summarize(sub_mean_correct = mean(correct),.groups="drop") %>% group_by(SOA) %>% summarize(mean = mean(sub_mean_correct),sd = sd(sub_mean_correct)) %>% gt() %>% fmt_number(
+   columns = c(mean,sd),
+  decimals = 2
+)
+t_SOA %>% gtsave(filename = "SOA_table.png",path=sdir)
+}
+```
+
+```{r}
+# simple summarize models
+simple_summarize_models = function(m1,m2){
+  models = list(m1 = m1,
+                m2 = m2)
+return(models)
+}
+```
+
+## Experiment 1
+
+```{r run_Experiment_1_Learning}
+# ldf = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp1/exp1_learning_data.csv")
+# sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp1/tables/"
+# 
+# lms = run_learning_models_and_tables(ldf,sdir,exp_flag = 1)
+summarize_learning_models(lms[[1]],lms[[2]])
+```
+
+```{r exp1_recall_tables}
+df = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp1/exp1_n=38_final.csv")
+sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp1/tables/"
+run_tables(df,sdir)
+```
+
+```{r experiment_1_recall}
+# start_time = Sys.time()
+# # exp1 (sona)
+# df = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp1/exp1_n=38_final.csv")
+# sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp1/tables/"
+# 
+# exp1_models  = run_simple_models(df,nsim=500)
+
+simple_summarize_models(exp1_models[[1]],exp1_models[[2]])
+```
+
+## Experiment 2
+
+```{r run Experiment_2_Learning}
+ldf = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp2/data/exp2_learning_data.csv")
+sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp2/data/tables/"
+
+lms = run_learning_models_and_tables(ldf,sdir,exp_flag = 2)
+summarize_learning_models(lms[1],lms[2])
+```
+
+```{r exp2_recall_tables}
+df = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp2/data/exp2_n=29_final.csv")
+sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp2/data/tables/"
+run_tables(df,sdir)
+```
+
+```{r experiment_2_recall_models}
+
+# df = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp2/data/exp2_n=29_final.csv")
+# exp2_models  = run_simple_models(df,nsim=500)
+simple_summarize_models(exp2_models[[1]],exp2_models[[2]])
+```
+## Experiment 3
+
+```{r Experiment_3_Learning}
+ldf = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp3_mturk/exp3_learning_data.csv")
+sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp3_mturk/"
+
+# ldf = ldf %>% filter(presTime != 10)
+
+# add subjGroup col
+ldf = ldf %>% group_by(sona_id) %>% mutate(gap_group = max(presTime))
+# convert SOA to gap or no gap
+ldf = ldf %>% group_by(sona_id) %>% mutate(gap_nogap = ifelse(presTime > 10,"gap","nogap"))
+
+lms = run_learning_models_and_tables(ldf,sdir,exp_flag = 3)
+summarize_learning_models(lms[1],lms[2])
+```
+
+```{r Experiment3_models_func}
+# simplified models. Main effect, categorical of test and ttest
+run_exp3_simple_models = function(df,nsim){
+  
+df = change_pres10(df)
+df = time_to_cond(df)
+
+df$cb_condition = as.factor(df$cb_condition)
+df$presTime_numeric = as.numeric(df$presTime)
+df$SOA = as.factor(df$presTime)
+df$id = as.factor(df$sona_id)
+df$correct = as.numeric(df$correct)
+df$pair_idx = as.factor(df$pair_idx)
+df$fp_diff = as.numeric(df$fp_diff)
+df$fp_diff_scale = scale(df$fp_diff)
+
+# just test df
+test_df = df %>% filter(presTime != "0")
+
+cl <- makeCluster(rep("localhost", 6)) # make cluster
+mm1 = afex::mixed(cl=cl,data=df,formula=(correct ~ NoGap_Gap*cb_condition + (NoGap_Gap|id) + (1|pair_idx)),family=binomial(link='logit'),method="PB",args_test = list(nsim = nsim, cl = cl),progress=TRUE,expand_re = TRUE,control = glmerControl(optCtrl = list(maxfun = 1e6)))
+stopCluster(cl)
+
+cl <- makeCluster(rep("localhost", 6)) # make cluster
+mm2 = afex::mixed(cl=cl,data=df,formula=(correct ~ SOA*cb_condition + (1|id) + (1|pair_idx)),family=binomial(link='logit'),method="PB",args_test = list(nsim = nsim, cl = cl),progress=TRUE,expand_re = TRUE,control = glmerControl(optCtrl = list(maxfun = 1e6)),check_contrasts = FALSE,per_parameter="SOA")
+stopCluster(cl)
+
+out=list(mm1,mm2) 
+return(out)
+}
+```
+
+```{r exp3_tables}
+### descriptive stats tables
+exp3_tables = function(df,sdir){
+  
+df = change_pres10(df)
+df = time_to_cond(df)
+
+df$cb_condition = as.factor(df$cb_condition)
+df$presTime_numeric = as.numeric(df$presTime)
+df$SOA = as.factor(df$presTime)
+df$id = as.factor(df$sona_id)
+df$correct = as.numeric(df$correct)
+df$pair_idx = as.factor(df$pair_idx)
+df$fp_diff = as.numeric(df$fp_diff)
+df$fp_diff_scale = scale(df$fp_diff)
+
+# NoGap_Gap 
+t_study_test = df %>% group_by(id,NoGap_Gap) %>% summarize(sub_mean_correct = mean(correct),.groups="drop") %>% group_by(NoGap_Gap) %>% summarize(mean = mean(sub_mean_correct),sd = sd(sub_mean_correct)) %>% gt() %>% fmt_number(
+   columns = c(mean,sd),
+  decimals = 2
+)
+t_study_test %>% gtsave(filename = "study_test_table.png",path=sdir)
+
+# SOA
+t_SOA = df %>% group_by(id,SOA) %>% summarize(sub_mean_correct = mean(correct),.groups="drop") %>% group_by(SOA) %>% summarize(mean = mean(sub_mean_correct),sd = sd(sub_mean_correct)) %>% gt() %>% fmt_number(
+   columns = c(mean,sd),
+  decimals = 2
+)
+t_SOA %>% gtsave(filename = "SOA_table.png",path=sdir)
+}
+```
+
+```{r exp3_recall_tables}
+df = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp3_mturk/exp3_n=127_final.csv")
+sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp3_mturk/"
+exp3_tables(df,sdir)
+
+# n per group
+df %>% group_by(cb_condition,gap_presTime) %>% summarize(count = n_distinct(sona_id))
+```
+
+```{r experiment3_recall_models}
+# 
+# df = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp3_mturk/exp3_n=127_final.csv")
+# 
+# exp3_models  = run_exp3_simple_models(df,nsim=500)
+simple_summarize_models(exp3_models[[1]],exp3_models[[2]])
+```
+
+## Experiment 4a
+
+```{r Experiment_4a_Learning}
+ldf = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4a_mturk/exp4_learning_data.csv")
+sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4a_mturk/"
+
+lms = run_learning_models_and_tables(ldf,sdir,exp_flag =4)
+summarize_learning_models(lms[1],lms[2])
+```
+```{r exp4a_recall_tables}
+df4a = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4a_mturk/exp4a_n=44_final.csv")
+sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4a_mturk/"
+run_tables(df4a,sdir)
+```
+## Experiment 4b
+
+```{r Experiment_4b_Learning}
+ldf = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4b_mturk/exp4_learning_data.csv")
+sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4b_mturk/"
+
+lms = run_learning_models_and_tables(ldf,sdir,exp_flag =4)
+summarize_learning_models(lms[1],lms[2])
+```
+
+```{r exp4b_recall_tables}
+df4b = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4b_mturk/exp4b_n=50_final.csv")
+sdir = "/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4b_mturk/"
+run_tables(df4b,sdir)
+```
+## Experiment 4 Merged
+
+```{r}
+# for experiment 4 simplified models with RI factor
+exp4_run_simple_models = function(df,nsim){
+
+df = change_pres10(df)
+df = time_to_cond(df)
+
+df$Retention_Interval = as.factor(df$RI)
+df$presTime_numeric = as.numeric(df$presTime)
+df$SOA = as.factor(df$presTime)
+df$id = as.factor(df$sona_id)
+df$correct = as.numeric(df$correct)
+df$pair_idx = as.factor(df$pair_idx)
+df$fp_diff = as.numeric(df$fp_diff)
+df$fp_diff_scale = scale(df$fp_diff)
+
+cl <- makeCluster(rep("localhost", 6)) # make cluster
+mm1 = afex::mixed(cl=cl,data=df,formula=(correct ~ NoGap_Gap*Retention_Interval + (NoGap_Gap|id) + (1|pair_idx)),family=binomial(link='logit'),method="PB",args_test = list(nsim = nsim, cl = cl),progress=TRUE,expand_re = TRUE,control = glmerControl(optCtrl = list(maxfun = 1e6)))
+stopCluster(cl)
+
+cl <- makeCluster(rep("localhost", 6)) # make cluster
+mm2 = afex::mixed(cl=cl,data=df,formula=(correct ~ SOA*Retention_Interval + (1|id) + (1|pair_idx)),family=binomial(link='logit'),method="PB",args_test = list(nsim = nsim, cl = cl),progress=TRUE,expand_re = TRUE,control = glmerControl(optCtrl = list(maxfun = 1e6)),check_contrasts = FALSE,per_parameter="SOA")
+stopCluster(cl)
+
+out=list(mm1,mm2) 
+return(out)
+}
+```
+
+```{r}
+# experiment 4 immediate and delayed test run simple models
+# need to merge 4a and 4b and add delay factor
+df4a = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4a_mturk/exp4a_n=44_final.csv")
+df4b = read_csv("/Volumes/GoogleDrive/My Drive/grad_school/DML_WBR/dissertation_drive/EDL/paid_EDL/exp4b_mturk/exp4b_n=50_final.csv")
+
+df4a = df4a %>% select(presTime,sona_id,correct,pair_idx,fp_diff)
+df4a$RI = '1 day'
+df4b = df4b %>% select(presTime,sona_id,correct,pair_idx,fp_diff)
+df4b$RI = '1 min'
+
+df4merged = rbind(df4a,df4b) 
+```
+
+```{r exp4 delay as factor}
+# exp4_merged_models  = exp4_run_simple_models(df4merged,nsim=500)
+
+simple_summarize_models(exp4_merged_models[[1]],exp4_merged_models[[2]])
+```
+
+```{r}
+df4merged %>% group_by(RI) %>% summarize(count = n_distinct(sona_id))
+```
