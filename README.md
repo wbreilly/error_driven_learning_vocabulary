@@ -30,21 +30,31 @@ This repository includes the scripts used to munge, analyze, and visualize the d
 </p>
 Experimental Design. There were two types of experimental condition. In "gap" conditions, there was a temporal gap between Swahili presentation and English word presentation. In "no gap" conditions, the Swahili and English words were presented simultaneously.
 
-### Figure 2. 
-<img align ="center" src="figures/exp1.png" width = "60%">
+### Figure 2.
+<p align="center"> 
+	<img align ="center" src="figures/exp1.png" width = "60%">
+</p>
 Experiment 1 Cued-recall Performance. Mean proportion correct on the final cued-recall test in Experiment 1. Error bars represent standard error of the mean.
 
 ### Figure 3. 
+<p align="center">
 <img src = "figures/exp2.png" width = "60%">
+</p>
 
 ### Figure 4. 
-<img src = "figures/exp3.png" width = "60%">
+<p align="center">
+	<img src = "figures/exp3.png" width = "60%">
+</p>
 
 ### Figure 5. 
-<img src = "figures/exp4_30s.png" width = "60%">
+<p align="center">
+	<img src = "figures/exp4_30s.png" width = "60%">
+</p>
 
 ### Figure 6. 
-<img src = "figures/exp4_24h.png" width = "60%">
+<p align="center">
+	<img src = "figures/exp4_24h.png" width = "60%">
+</p>
 
 ### Tools
 
