@@ -22,6 +22,8 @@ This repository includes the scripts used to munge, analyze, and visualize the d
 
 `stats.Rmd` Statistical analyses of learning data and cued-recall performance on the final test. Cued-recall was modeled with mixed-effects logistic regression to account for random variation among items and participants. Inference was conducted with a parametric bootstrap approach.
 
+`stats.md` Same as above--but capable of rendering on GitHub.
+
 `tfidf_check.py` tf-idf natural language processing technique used to identify spurious corrleations in incorrect final test performance to help identify individuals who used multiple accounts, i.e. bad data. 
 
 ### Figure 1. 
