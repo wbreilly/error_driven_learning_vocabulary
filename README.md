@@ -1,4 +1,4 @@
-## A repository for the analysis and visualization code used in *How to enhance learning in less than one second* Reilly W.B., Antony. J.W., & Ranganath, C. (in prep)
+## A repository for the analysis and visualization code used in *How to enhance learning in less than one second* Reilly W.B., Antony. J.W., & Ranganath, C. (submitted)
 
 ### Project Description
 
